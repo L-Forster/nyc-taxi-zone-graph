@@ -1,4 +1,5 @@
 # NYC Taxi Zone Graph
+This project provides a bridge-aware adjacency graph for NYC TLC taxi zones. It exports a ready-to-use adjacency matrix and map for demand forecasting, graph ML, simulation, and spatial feature engineering. Unlike plain polygon-neighbor methods, it can add bridge and tunnel links using the NYC road network.
 
 Builds an adjacency graph for NYC taxi zones using:
 - polygon edge-sharing (rook contiguity), and
