@@ -8,7 +8,7 @@ import pandas as pd
 from libpysal.weights import Rook
 from shapely.geometry import Point
 
-from src.utils.utils import reproject_lon_lat_points
+from utils.utils import reproject_lon_lat_points
 
 
 def is_bridge_or_tunnel(edge_data):
@@ -17,12 +17,13 @@ def is_bridge_or_tunnel(edge_data):
     return bridge not in {"", "0", "false", "no", "none"} or tunnel not in {"", "0", "false", "no", "none"}
 
 
-parser = argparse.ArgumentParser()
-parser.add_argument("--zones", default="src/zones/data/taxi_zones/taxi_zones.shp")
-parser.add_argument("--adjacency-out", default="src/zones/data/taxi_zones_adjacency_matrix.csv")
-parser.add_argument("--graphml", default="")
-parser.add_argument("--include-islands", action="store_true")
-args = parser.parse_args()
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--zones", default="zones/data/taxi_zones/taxi_zones.shp")
+    parser.add_argument("--adjacency-out", default="zones/data/taxi_zones_adjacency_matrix.csv")
+    parser.add_argument("--graphml", default="")
+    parser.add_argument("--include-islands", action="store_true")
+    return parser.parse_args()
 
 
 def resolve_graphml_path(graphml_arg):
@@ -32,7 +33,7 @@ def resolve_graphml_path(graphml_arg):
             raise SystemExit(f"GraphML file not found: {graphml_path}")
         return graphml_path
 
-    local_default = Path("src/zones/data/newyork.graphml").resolve()
+    local_default = Path("zones/data/newyork.graphml").resolve()
     if local_default.exists():
         return local_default
 
@@ -42,7 +43,7 @@ def resolve_graphml_path(graphml_arg):
     except Exception as exc:
         raise SystemExit(
             "Could not fetch GraphML from Kaggle. Provide a local file with "
-            "`--graphml /path/to/newyork.graphml` or place it at `src/zones/data/newyork.graphml`.\n"
+            "`--graphml /path/to/newyork.graphml` or place it at `zones/data/newyork.graphml`.\n"
             f"Original error: {exc}"
         )
 
@@ -50,17 +51,11 @@ def resolve_graphml_path(graphml_arg):
 def add_bridge_tunnel_adjacency(adjacency, zones, graphml_path):
     root = ET.parse(graphml_path).getroot()
     namespace = {"graphml": "http://graphml.graphdrawing.org/xmlns"}
-    key_map = {
-        key.attrib["id"]: key.attrib.get("attr.name", "")
-        for key in root.findall("graphml:key", namespace)
-    }
+    key_map = {key.attrib["id"]: key.attrib.get("attr.name", "") for key in root.findall("graphml:key", namespace)}
 
     node_points = {}
     for node in root.findall(".//graphml:node", namespace):
-        node_data = {
-            key_map[data.attrib["key"]]: (data.text or "")
-            for data in node.findall("graphml:data", namespace)
-        }
+        node_data = {key_map[data.attrib["key"]]: (data.text or "") for data in node.findall("graphml:data", namespace)}
         if "x" in node_data and "y" in node_data:
             node_points[node.attrib["id"]] = Point(float(node_data["x"]), float(node_data["y"]))
 
@@ -68,10 +63,7 @@ def add_bridge_tunnel_adjacency(adjacency, zones, graphml_path):
     endpoint_ids = set()
 
     for edge in root.findall(".//graphml:edge", namespace):
-        edge_data = {
-            key_map[data.attrib["key"]]: (data.text or "")
-            for data in edge.findall("graphml:data", namespace)
-        }
+        edge_data = {key_map[data.attrib["key"]]: (data.text or "") for data in edge.findall("graphml:data", namespace)}
         if not is_bridge_or_tunnel(edge_data):
             continue
 
@@ -81,15 +73,14 @@ def add_bridge_tunnel_adjacency(adjacency, zones, graphml_path):
         endpoint_ids.add(source)
         endpoint_ids.add(target)
 
-    # GraphML node coordinates are lon/lat, so reproject them into the taxi zone CRS
-    # before checking whether each bridge/tunnel endpoint falls within a zone polygon.
+    # GraphML node coordinates are lon/lat, so reproject them into taxi-zone CRS first.
     endpoint_points = reproject_lon_lat_points(
         point_ids=sorted(endpoint_ids),
         point_lookup=node_points,
         target_crs=zones.crs,
     )
 
-    # Only keep endpoints that directly intersect a taxi zone polygon.
+    # Only keep endpoints that intersect a zone polygon.
     joined = gpd.sjoin(
         endpoint_points,
         zones[["LocationID", "geometry"]],
@@ -97,11 +88,7 @@ def add_bridge_tunnel_adjacency(adjacency, zones, graphml_path):
         predicate="intersects",
     )
 
-    node_zones = (
-        joined.groupby("node_id")["LocationID"]
-        .apply(lambda values: sorted(set(values.astype(int))))
-        .to_dict()
-    )
+    node_zones = joined.groupby("node_id")["LocationID"].apply(lambda values: sorted(set(values.astype(int)))).to_dict()
 
     for source, target in bridge_tunnel_edges:
         for source_zone in node_zones.get(source, []):
@@ -111,21 +98,25 @@ def add_bridge_tunnel_adjacency(adjacency, zones, graphml_path):
                     adjacency.loc[target_zone, source_zone] = 1
 
 
-graphml_path = resolve_graphml_path(args.graphml)
-zones = gpd.read_file(args.zones).sort_values("LocationID")
-weights = Rook.from_dataframe(zones, ids=zones["LocationID"].astype(int).tolist())
-matrix, ids = weights.full()
-adjacency = pd.DataFrame(matrix.astype(int), index=ids, columns=ids)
+def main():
+    args = parse_args()
+    graphml_path = resolve_graphml_path(args.graphml)
+    zones = gpd.read_file(args.zones).sort_values("LocationID")
+    weights = Rook.from_dataframe(zones, ids=zones["LocationID"].astype(int).tolist())
+    matrix, ids = weights.full()
+    adjacency = pd.DataFrame(matrix.astype(int), index=ids, columns=ids)
 
-add_bridge_tunnel_adjacency(adjacency, zones, graphml_path)
+    add_bridge_tunnel_adjacency(adjacency, zones, graphml_path)
 
-#  island/bridge corrections:
-# Islands: 202 -> 193, 46 -> 184.
+    if not args.include_islands:
+        connected = adjacency.index[adjacency.sum(axis=1) > 0]
+        adjacency = adjacency.loc[connected, connected]
 
-if not args.include_islands:
-    # Remove disconnected islands (ie. liberty island, Newark Airport, etc.)
-    connected = adjacency.index[adjacency.sum(axis=1) > 0]
-    adjacency = adjacency.loc[connected, connected]
+    output_path = Path(args.adjacency_out)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    adjacency.index.name = "LocationID"
+    adjacency.to_csv(output_path)
 
-adjacency.index.name = "LocationID"
-adjacency.to_csv(args.adjacency_out)
+
+if __name__ == "__main__":
+    main()

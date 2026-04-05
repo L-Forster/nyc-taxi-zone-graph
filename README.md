@@ -1,99 +1,87 @@
-# Zone Adjacency Pipeline Usage
+# NYC Taxi Zone Graph
 
-This document covers setup and usage for:
+Builds an adjacency graph for NYC taxi zones using:
+- polygon edge-sharing (rook contiguity), and
+- extra bridge/tunnel links from a NYC road GraphML network.
 
-- `zones/generate_adj_grid.py`
-- `zones/visualise_adj_map.py`
-- `zones/run_pipeline.py`
+The pipeline produces:
+- `zones/data/taxi_zones_adjacency_matrix.csv`
+- `zones/data/taxi_zones_adjacency_map.png`
 
-## What it does
+## Repository Structure
 
-- Builds a taxi-zone adjacency matrix using **rook contiguity** (shared edges only, no corner-only links).
-- Adds extra adjacency links for bridge/tunnel-connected zones from a NYC road GraphML.
-- Optionally keeps disconnected zones (islands) in CSV and map output.
+- `zones/generate_adj_grid.py`: builds adjacency matrix CSV.
+- `zones/visualise_adj_map.py`: draws adjacency map PNG from CSV.
+- `zones/run_pipeline.py`: runs both steps.
+- `zones/data/taxi_zones/`: input taxi zone shapefile.
+- `utils/utils.py`: CRS helper utilities.
 
-## Required files
+## Requirements
 
-- Zone shapefile (default):
-  - `zones/data/taxi_zones/taxi_zones.shp`
-- Road graph GraphML:
-  - Pass explicitly with `--graphml /path/to/newyork.graphml`, or
-  - Put file at `zones/data/newyork.graphml`
-  - If missing, script attempts Kaggle download via `kagglehub`.
+- Python 3.10+
+- GEOS/GDAL/PROJ-compatible environment for GeoPandas stack
 
-## Quick start
+Install Python dependencies:
 
-Run full pipeline (matrix + map):
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+```
+
+## Quick Start
+
+Run full pipeline:
 
 ```bash
 python zones/run_pipeline.py
 ```
 
-
-## Include islands
-
-To keep zero-adjacency zones in both outputs:
+Include disconnected islands in outputs:
 
 ```bash
-python zones/run_pipeline.py --include-islands 
+python zones/run_pipeline.py --include-islands
 ```
 
-Without `--include-islands`, disconnected zones are removed from the adjacency matrix and the map data subset.
+## CLI Options
 
+`zones/run_pipeline.py`
 
-## CLI parameters
+- `--zones` (default: `zones/data/taxi_zones/taxi_zones.shp`)
+- `--adjacency-out` (default: `zones/data/taxi_zones_adjacency_matrix.csv`)
+- `--map-out` (default: `zones/data/taxi_zones_adjacency_map.png`)
+- `--graphml` optional GraphML path
+- `--include-islands` keep zero-degree zones
 
-### `run_pipeline.py`
+`zones/generate_adj_grid.py`
 
-```text
---zones           Path to zone shapefile
-                  default: zones/data/taxi_zones/taxi_zones.shp
---adjacency-out   Output adjacency CSV path
-                  default: zones/data/taxi_zones_adjacency_matrix.csv
---map-out         Output adjacency map PNG path
-                  default: zones/data/taxi_zones_adjacency_map.png
---graphml         Optional GraphML path; if omitted, local/Kaggle resolution is used
---include-islands Keep zero-degree zones in CSV and map
-```
+- `--zones`
+- `--adjacency-out`
+- `--graphml`
+- `--include-islands`
 
-### `generate_adj_grid.py`
+`zones/visualise_adj_map.py`
 
-```text
---zones           Path to zone shapefile
---adjacency-out   Output adjacency CSV path
---graphml         Optional GraphML path
---include-islands Keep zero-degree zones in adjacency CSV
-```
+- `--zones`
+- `--adjacency`
+- `--output`
+- `--include-islands`
 
-### `visualise_adj_map.py`
+## GraphML Source
 
-```text
---zones           Path to zone shapefile
---adjacency       Input adjacency CSV path
---output          Output PNG path
---include-islands Ensure all zones are shown (reindexes missing zones to 0 links)
-```
+For bridge/tunnel enrichment, the script resolves GraphML in this order:
+1. path passed via `--graphml`
+2. local file at `zones/data/newyork.graphml`
+3. Kaggle download via `kagglehub` (`crailtap/street-network-of-new-york-in-graphml`)
 
-## Outputs
-
-- Adjacency matrix CSV:
-  - default: `zones/data/taxi_zones_adjacency_matrix.csv`
-  - square matrix indexed by `LocationID` with `0/1` connectivity.
-- Visualization PNG:
-  - default: `zones/data/taxi_zones_adjacency_map.png`
-  - zone polygons + red line segments for adjacency edges.
+If Kaggle download is unavailable, pass `--graphml` explicitly.
 
 ## Notes
 
-- Contiguity is `Rook`: edge-sharing only.
-- Bridge/tunnel links are added after geometric adjacency.
-- Warnings about disconnected components/islands from `libpysal` are expected and not fatal.
+- Contiguity uses rook adjacency (shared boundary edge only).
+- Island/disconnected-zone warnings from `libpysal` are expected.
+- Output directory is created automatically if missing.
 
-## Troubleshooting
+## License
 
-- `No such file or directory: ...taxi_zones.shp`
-  - Pass the correct path with `--zones`.
-- `Could not fetch GraphML from Kaggle...`
-  - Provide `--graphml /path/to/newyork.graphml` or place file at `src/zones/data/newyork.graphml`.
-- `ModuleNotFoundError` for geospatial libs
-  - Run `make setup` (or `uv sync`) and use `uv run ...` or the repo `.venv`.
+MIT License (see [LICENSE](LICENSE)).
