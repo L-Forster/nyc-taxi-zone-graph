@@ -77,7 +77,7 @@ For bridge/tunnel enrichment, the script resolves GraphML in this order:
 
 If Kaggle download is unavailable, pass `--graphml` explicitly.
 
-<img width="500"  alt="taxi_zones_adjacency_map" src="https://github.com/user-attachments/assets/6dc9a640-ae69-4524-86e5-70c5880dc0ed" />
+<img width="800"  alt="taxi_zones_adjacency_map" src="https://github.com/user-attachments/assets/6dc9a640-ae69-4524-86e5-70c5880dc0ed" />
 
 
 
